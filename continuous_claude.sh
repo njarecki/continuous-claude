@@ -119,22 +119,33 @@ wait_for_pr_checks() {
         echo "🔍 $iteration_display Checking PR status (iteration $((iteration + 1))/$max_iterations)..." >&2
         
         local checks_json
+        local no_checks_configured=false
         if ! checks_json=$(gh pr checks "$pr_number" --repo "$owner/$repo" --json state,bucket 2>&1); then
             # Check if the error is because there are no checks configured
             if echo "$checks_json" | grep -q "no checks"; then
-                echo "✅ $iteration_display No checks configured" >&2
-                return 0
+                echo "   📊 No checks configured" >&2
+                no_checks_configured=true
+                checks_json="[]"
             else
                 echo "⚠️  $iteration_display Failed to get PR checks status: $checks_json" >&2
                 return 1
             fi
         fi
 
-        local all_completed=true
-        local all_success=true
         local check_count=$(echo "$checks_json" | jq 'length' 2>/dev/null || echo "0")
         
-        echo "   📊 Found $check_count check(s)" >&2
+        if [ "$no_checks_configured" = "false" ]; then
+            echo "   📊 Found $check_count check(s)" >&2
+        fi
+        
+        # Initialize check status flags
+        local all_completed=true
+        local all_success=true
+        
+        # If checks are configured but none found yet, mark as not completed
+        if [ "$no_checks_configured" = "false" ] && [ "$check_count" -eq 0 ]; then
+            all_completed=false
+        fi
 
         if [ "$check_count" -gt 0 ]; then
             local pending_count=0
@@ -189,7 +200,7 @@ wait_for_pr_checks() {
         fi
 
         # If we have checks that haven't started yet, wait (but only for a limited time)
-        if [ "$check_count" -eq 0 ] && [ "$checks_json" != "" ] && [ "$checks_json" != "[]" ]; then
+        if [ "$check_count" -eq 0 ] && [ "$checks_json" != "" ] && [ "$checks_json" != "[]" ] && [ "$no_checks_configured" = "false" ]; then
             # Only wait for checks if we haven't been waiting too long
             if [ "$iteration" -lt 18 ]; then
                 echo "⏳ Waiting for checks to start... (will timeout after 3 minutes)" >&2
@@ -198,17 +209,24 @@ wait_for_pr_checks() {
                 iteration=$((iteration + 1))
                 continue
             else
-                echo "✅ No checks found after waiting, proceeding without checks" >&2
-                return 0
+                echo "   ⚠️  No checks found after waiting, proceeding without checks" >&2
+                # Set flags to indicate checks are "done" (none exist)
+                all_completed=true
+                all_success=true
             fi
         fi
 
-        # Check if everything is ready
+        # Check if everything is ready (checks passed/none and no pending reviews)
         if [ "$all_completed" = "true" ] && [ "$all_success" = "true" ] && [ "$reviews_pending" = "false" ]; then
             if [ "$review_decision" = "APPROVED" ] || [ "$review_decision" = "null" ]; then
                 echo "✅ $iteration_display All PR checks and reviews passed" >&2
                 return 0
             fi
+        fi
+        
+        # Show status when checks pass but reviews are pending
+        if [ "$all_completed" = "true" ] && [ "$all_success" = "true" ] && [ "$reviews_pending" = "true" ]; then
+            echo "   ✅ All checks passed, but waiting for review..." >&2
         fi
 
         # Check for failures
