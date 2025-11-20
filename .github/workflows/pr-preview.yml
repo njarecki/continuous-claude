@@ -89,7 +89,7 @@ jobs:
           # Create dev version with PR number
           PR_NUMBER="${{ github.event.pull_request.number }}"
           DEV_VERSION="v${MAJOR}.${MINOR}.${PATCH}-dev.pr${PR_NUMBER}"
-          
+
           echo "dev_version=$DEV_VERSION" >> $GITHUB_OUTPUT
           echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
           echo "Dev version: $DEV_VERSION (${BUMP_TYPE} bump)"
@@ -159,10 +159,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PR_NUMBER="${{ github.event.pull_request.number }}"
-          
+
           # Get all releases with tags matching this PR
           OLD_RELEASES=$(gh release list --limit 100 | grep "dev.pr${PR_NUMBER}" | awk '{print $3}' || true)
-          
+
           if [ -n "$OLD_RELEASES" ]; then
             echo "Deleting old preview releases for PR #${PR_NUMBER}..."
             for tag in $OLD_RELEASES; do
@@ -191,33 +191,33 @@ jobs:
           script: |
             const devVersion = '${{ steps.version_bump.outputs.dev_version }}';
             const bumpType = '${{ steps.version_bump.outputs.bump_type }}';
-            
+
             const comment = `## 🚀 Preview Release Created
-            
+
             A pre-release has been created for testing this PR.
-            
+
             - **Version**: \`${devVersion}\`
             - **Bump Type**: ${bumpType}
             - **Release**: [View Release](https://github.com/${{ github.repository }}/releases/tag/${devVersion})
-            
+
             ### Test this PR
-            
+
             Install and test this version with:
-            
+
             \`\`\`bash
             curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/refs/tags/${devVersion}/install.sh | bash
             \`\`\`
-            
+
             Or download directly:
-            
+
             \`\`\`bash
             curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/refs/tags/${devVersion}/continuous_claude.sh -o continuous-claude
             chmod +x continuous-claude
             sudo mv continuous-claude /usr/local/bin/
             \`\`\`
-            
+
             Please test and provide feedback! 🧪`;
-            
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
@@ -230,4 +230,3 @@ jobs:
           echo "🎉 Created preview release ${{ steps.version_bump.outputs.dev_version }}"
           echo "📦 Bump type: ${{ steps.version_bump.outputs.bump_type }}"
           echo "🔗 PR: #${{ github.event.pull_request.number }}"
-
