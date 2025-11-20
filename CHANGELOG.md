@@ -1,5 +1,30 @@
 # CHANGELOG
 
+## [v0.8.3] - 2025-11-20
+
+### What's Changed
+
+- :construction_worker: Enhance CI workflows with testing and changelog updates (96b8d4c)
+- :bug: Fix PR closing command (0258589)
+
+**Full Changelog**: https://github.com/AnandChowdhary/continuous-claude/compare/v0.8.2...v0.8.3
+
+### Installation
+
+Install with a single command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AnandChowdhary/continuous-claude/refs/tags/v0.8.3/install.sh | bash
+```
+
+Or download the script directly:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AnandChowdhary/continuous-claude/refs/tags/v0.8.3/continuous_claude.sh -o continuous-claude
+chmod +x continuous-claude
+sudo mv continuous-claude /usr/local/bin/
+```
+
 ## [v0.8.2] - 2025-11-20
 
 ### What's Changed
