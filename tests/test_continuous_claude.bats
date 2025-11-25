@@ -618,6 +618,39 @@ setup() {
     assert [ $status -eq 2 ]
 }
 
+@test "compare_versions handles pre-release versions" {
+    source "$SCRIPT_PATH"
+    
+    # Pre-release suffixes should be stripped for comparison
+    run compare_versions "v1.0.0-beta" "v1.0.0"
+    assert [ $status -eq 0 ]
+    
+    run compare_versions "v1.0.0-rc1" "v1.0.0-rc2"
+    assert [ $status -eq 0 ]
+    
+    run compare_versions "v1.0.0-beta" "v1.0.1"
+    assert [ $status -eq 1 ]
+}
+
+@test "get_script_path returns script path" {
+    source "$SCRIPT_PATH"
+    
+    # Mock readlink and realpath
+    function readlink() {
+        if [ "$1" = "-f" ]; then
+            echo "/usr/local/bin/continuous-claude"
+            return 0
+        fi
+        return 1
+    }
+    export -f readlink
+    
+    run get_script_path
+    
+    assert_success
+    assert_output "/usr/local/bin/continuous-claude"
+}
+
 @test "download_and_install_update downloads and replaces script" {
     source "$SCRIPT_PATH"
     

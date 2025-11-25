@@ -173,13 +173,19 @@ compare_versions() {
     ver1="${ver1#v}"
     ver2="${ver2#v}"
     
+    # Remove any pre-release suffix (e.g., -beta, -rc1) for simple comparison
+    ver1="${ver1%%-*}"
+    ver2="${ver2%%-*}"
+    
     if [ "$ver1" = "$ver2" ]; then
         return 0
     fi
     
-    # Split versions and compare
+    # Split versions and compare using safer array creation
     local IFS=.
-    local i ver1_arr=($ver1) ver2_arr=($ver2)
+    local i ver1_arr ver2_arr
+    read -ra ver1_arr <<< "$ver1"
+    read -ra ver2_arr <<< "$ver2"
     
     # Fill empty positions with zeros
     for ((i=${#ver1_arr[@]}; i<${#ver2_arr[@]}; i++)); do
@@ -189,17 +195,27 @@ compare_versions() {
         ver2_arr[i]=0
     done
     
-    # Compare each component
+    # Compare each component (only if numeric)
     for ((i=0; i<${#ver1_arr[@]}; i++)); do
-        if ((10#${ver1_arr[i]} < 10#${ver2_arr[i]})); then
-            return 1
-        fi
-        if ((10#${ver1_arr[i]} > 10#${ver2_arr[i]})); then
-            return 2
+        # Ensure components are numeric before comparison
+        if [[ "${ver1_arr[i]}" =~ ^[0-9]+$ ]] && [[ "${ver2_arr[i]}" =~ ^[0-9]+$ ]]; then
+            if ((10#${ver1_arr[i]} < 10#${ver2_arr[i]})); then
+                return 1
+            fi
+            if ((10#${ver1_arr[i]} > 10#${ver2_arr[i]})); then
+                return 2
+            fi
         fi
     done
     
     return 0
+}
+
+get_script_path() {
+    # Get the absolute path to the current script
+    local script_path
+    script_path=$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")
+    echo "$script_path"
 }
 
 download_and_install_update() {
@@ -210,7 +226,9 @@ download_and_install_update() {
     
     # Download the new version to a temporary file
     local temp_file=$(mktemp)
-    if ! curl -fsSL "https://raw.githubusercontent.com/AnandChowdhary/continuous-claude/main/continuous_claude.sh" -o "$temp_file"; then
+    # Use the specific release tag instead of main branch
+    local download_url="https://raw.githubusercontent.com/AnandChowdhary/continuous-claude/${latest_version}/continuous_claude.sh"
+    if ! curl -fsSL "$download_url" -o "$temp_file"; then
         echo "❌ Failed to download update" >&2
         rm -f "$temp_file"
         return 1
@@ -264,9 +282,7 @@ check_for_updates() {
         read -r response
         
         if [[ "$response" =~ ^[Yy]$ ]]; then
-            # Find the script path
-            local script_path
-            script_path=$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")
+            local script_path=$(get_script_path)
             
             if download_and_install_update "$latest_version" "$script_path"; then
                 echo "🔄 Restarting with new version..." >&2
@@ -308,8 +324,7 @@ handle_update_command() {
     read -r response
     
     if [[ "$response" =~ ^[Yy]$ ]]; then
-        local script_path
-        script_path=$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")
+        local script_path=$(get_script_path)
         
         if download_and_install_update "$latest_version" "$script_path"; then
             echo "✅ Update complete! Version $latest_version is now installed." >&2
