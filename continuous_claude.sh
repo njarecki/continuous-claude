@@ -52,6 +52,7 @@ LIST_WORKTREES=false
 DRY_RUN=false
 COMPLETION_SIGNAL="CONTINUOUS_CLAUDE_PROJECT_COMPLETE"
 COMPLETION_THRESHOLD=3
+LOG_FILE=""
 ERROR_LOG=""
 error_count=0
 extra_iterations=0
@@ -88,6 +89,7 @@ OPTIONAL FLAGS:
     --cleanup-worktree            Remove worktree after completion
     --list-worktrees              List all active git worktrees and exit
     --dry-run                     Simulate execution without making changes
+    --log-file <file>             Write all output to log file in real-time (in addition to terminal)
     --completion-signal <phrase>  Phrase that agents output when project is complete (default: "CONTINUOUS_CLAUDE_PROJECT_COMPLETE")
     --completion-threshold <num>  Number of consecutive signals to stop early (default: 3)
 
@@ -203,6 +205,10 @@ parse_arguments() {
             --dry-run)
                 DRY_RUN=true
                 shift
+                ;;
+            --log-file)
+                LOG_FILE="$2"
+                shift 2
                 ;;
             --completion-signal)
                 COMPLETION_SIGNAL="$2"
@@ -550,21 +556,44 @@ merge_pr_and_cleanup() {
     return 0
 }
 
+get_default_branch() {
+    # Try to get the default branch from remote HEAD
+    local default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
+
+    # If that fails, try common default branch names
+    if [ -z "$default_branch" ]; then
+        if git show-ref --verify --quiet refs/heads/main; then
+            default_branch="main"
+        elif git show-ref --verify --quiet refs/heads/master; then
+            default_branch="master"
+        else
+            # Fall back to whatever branch we're on (or main if detached)
+            default_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+        fi
+    fi
+
+    echo "$default_branch"
+}
+
 create_iteration_branch() {
     local iteration_display="$1"
     local iteration_num="$2"
-    
+
     if ! git rev-parse --git-dir > /dev/null 2>&1; then
         echo ""
         return 0
     fi
 
     local current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
-    
+
     if [[ "$current_branch" == ${GIT_BRANCH_PREFIX}* ]]; then
         echo "⚠️  $iteration_display Already on iteration branch: $current_branch" >&2
-        git checkout main >/dev/null 2>&1 || return 1
-        current_branch="main"
+        local default_branch=$(get_default_branch)
+        if ! git checkout "$default_branch" >/dev/null 2>&1; then
+            echo "❌ $iteration_display Failed to checkout default branch: $default_branch" >&2
+            return 1
+        fi
+        current_branch="$default_branch"
     fi
     
     local date_str=$(date +%Y-%m-%d)
@@ -1212,15 +1241,33 @@ main() {
     parse_arguments "$@"
     validate_arguments
     validate_requirements
-    
+
     # Handle --list-worktrees flag
     if [ "$LIST_WORKTREES" = "true" ]; then
         list_worktrees
     fi
-    
+
+    # Setup logging if --log-file is specified
+    if [ -n "$LOG_FILE" ]; then
+        # Create log file directory if it doesn't exist
+        local log_dir=$(dirname "$LOG_FILE")
+        if [ ! -d "$log_dir" ]; then
+            mkdir -p "$log_dir" 2>/dev/null || {
+                echo "❌ Error: Failed to create log directory: $log_dir" >&2
+                exit 1
+            }
+        fi
+
+        # Redirect stderr to both terminal and log file
+        exec 2> >(tee -a "$LOG_FILE")
+        echo "📝 Logging to: $LOG_FILE" >&2
+        echo "🕐 Started at: $(date)" >&2
+        echo "" >&2
+    fi
+
     # Setup worktree if specified
     setup_worktree
-    
+
     ERROR_LOG=$(mktemp)
     trap "rm -f $ERROR_LOG; cleanup_worktree" EXIT
     
