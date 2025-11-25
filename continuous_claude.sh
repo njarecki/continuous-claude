@@ -1166,7 +1166,13 @@ $notes_content
         handle_iteration_error "$iteration_display" "exit_code" ""
         return 1
     fi
-    
+
+    # Skip JSON parsing when using verbose logging
+    if [ -n "$LOG_FILE" ]; then
+        # When logging, we don't use JSON format, so just create a simple success result
+        result='{"result":"Iteration completed (see log for details)","total_cost_usd":0,"is_error":false}'
+    fi
+
     local parse_result=$(parse_claude_result "$result")
     if [ "$?" != "0" ]; then
         # Clean up branch on error
@@ -1177,7 +1183,7 @@ $notes_content
         handle_iteration_error "$iteration_display" "$parse_result" "$result"
         return 1
     fi
-    
+
     handle_iteration_success "$iteration_display" "$result" "$branch_name" "$main_branch"
     return 0
 }
@@ -1258,8 +1264,13 @@ main() {
             }
         fi
 
+        # Remove --output-format json to show real-time Claude output
+        ADDITIONAL_FLAGS="--dangerously-skip-permissions"
+
         # Redirect stderr to both terminal and log file
         exec 2> >(tee -a "$LOG_FILE")
+        # Also redirect stdout to log file to capture Claude's output
+        exec 1> >(tee -a "$LOG_FILE")
         echo "📝 Logging to: $LOG_FILE" >&2
         echo "🕐 Started at: $(date)" >&2
         echo "" >&2
