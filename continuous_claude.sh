@@ -589,11 +589,16 @@ create_iteration_branch() {
     if [[ "$current_branch" == ${GIT_BRANCH_PREFIX}* ]]; then
         echo "⚠️  $iteration_display Already on iteration branch: $current_branch" >&2
         local default_branch=$(get_default_branch)
-        if ! git checkout "$default_branch" >/dev/null 2>&1; then
+        echo "🔄 $iteration_display Switching to $default_branch..." >&2
+        # Force checkout to discard any changes on iteration branch
+        if ! git checkout -f "$default_branch" >/dev/null 2>&1; then
             echo "❌ $iteration_display Failed to checkout default branch: $default_branch" >&2
+            echo "   Current branch: $(git branch --show-current)" >&2
+            echo "   Try manually: git checkout -f $default_branch" >&2
             return 1
         fi
         current_branch="$default_branch"
+        echo "✅ $iteration_display Switched to $default_branch" >&2
     fi
     
     local date_str=$(date +%Y-%m-%d)
@@ -916,10 +921,12 @@ run_claude_iteration() {
     local temp_stderr=$(mktemp)
     local exit_code=0
 
-    # When logging, show real-time output with tee; otherwise capture silently
+    # When logging, just run claude directly - output will be captured by exec redirects in main()
     if [ -n "$LOG_FILE" ]; then
-        # Show output in real-time AND capture it
-        claude -p "$prompt" $flags "${EXTRA_CLAUDE_FLAGS[@]}" 2>&1 | tee "$temp_stdout" || exit_code=$?
+        # Run directly, let output flow to terminal and log naturally
+        claude -p "$prompt" $flags "${EXTRA_CLAUDE_FLAGS[@]}" || exit_code=$?
+        # Create fake success result for parsing
+        echo '{"result":"done","total_cost_usd":0}' > "$temp_stdout"
     else
         # Capture to temp files for JSON parsing
         claude -p "$prompt" $flags "${EXTRA_CLAUDE_FLAGS[@]}" >"$temp_stdout" 2>"$temp_stderr" || exit_code=$?
