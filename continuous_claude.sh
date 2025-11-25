@@ -603,31 +603,43 @@ continuous_claude_commit() {
     local iteration_display="$1"
     local branch_name="$2"
     local main_branch="$3"
-    
+
     if ! git rev-parse --git-dir > /dev/null 2>&1; then
         return 0
     fi
 
     # Check for any changes: modified tracked files, staged changes, or new untracked files
-    local has_changes=false
+    local has_uncommitted_changes=false
     if ! git diff --quiet || ! git diff --cached --quiet; then
-        has_changes=true
+        has_uncommitted_changes=true
     fi
-    
+
     # Also check for untracked files (excluding ignored files)
-    if [ -z "$(git ls-files --others --exclude-standard)" ]; then
-        : # no untracked files
-    else
-        has_changes=true
+    if [ -n "$(git ls-files --others --exclude-standard)" ]; then
+        has_uncommitted_changes=true
     fi
-    
-    if [ "$has_changes" = "false" ]; then
+
+    # Check if there are committed changes on this branch compared to main
+    # This handles the case where Claude already committed during the iteration
+    local has_committed_changes=false
+    local commits_ahead=$(git rev-list --count "$main_branch".."$branch_name" 2>/dev/null || echo "0")
+    if [ "$commits_ahead" -gt 0 ]; then
+        has_committed_changes=true
+    fi
+
+    # If no uncommitted changes AND no committed changes, nothing to do
+    if [ "$has_uncommitted_changes" = "false" ] && [ "$has_committed_changes" = "false" ]; then
         echo "🫙 $iteration_display No changes detected, cleaning up branch..." >&2
         git checkout "$main_branch" >/dev/null 2>&1
         git branch -D "$branch_name" >/dev/null 2>&1 || true
         return 0
     fi
-    
+
+    # If Claude already committed, skip the commit step but continue to PR
+    if [ "$has_uncommitted_changes" = "false" ] && [ "$has_committed_changes" = "true" ]; then
+        echo "📦 $iteration_display Changes already committed on branch: $branch_name ($commits_ahead commit(s) ahead)" >&2
+    fi
+
     if [ "$DRY_RUN" = "true" ]; then
         echo "💬 $iteration_display (DRY RUN) Would commit changes..." >&2
         echo "📦 $iteration_display (DRY RUN) Changes committed on branch: $branch_name" >&2
@@ -636,23 +648,27 @@ continuous_claude_commit() {
         echo "✅ $iteration_display (DRY RUN) PR merged and local branch cleaned up" >&2
         return 0
     fi
-    
-    echo "💬 $iteration_display Committing changes..." >&2
-    
-    if ! claude -p "$PROMPT_COMMIT_MESSAGE" --allowedTools "Bash(git)" --dangerously-skip-permissions >/dev/null 2>&1; then
-        echo "⚠️  $iteration_display Failed to commit changes" >&2
-        git checkout "$main_branch" >/dev/null 2>&1
-        return 1
-    fi
 
-    # Verify all changes (including untracked files) were committed
-    if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
-        echo "⚠️  $iteration_display Commit command ran but changes still present (uncommitted or untracked files remain)" >&2
-        git checkout "$main_branch" >/dev/null 2>&1
-        return 1
-    fi
+    # Only run the commit step if there are uncommitted changes
+    # (skip if Claude already committed during the iteration)
+    if [ "$has_uncommitted_changes" = "true" ]; then
+        echo "💬 $iteration_display Committing changes..." >&2
 
-    echo "📦 $iteration_display Changes committed on branch: $branch_name" >&2
+        if ! claude -p "$PROMPT_COMMIT_MESSAGE" --allowedTools "Bash(git)" --dangerously-skip-permissions >/dev/null 2>&1; then
+            echo "⚠️  $iteration_display Failed to commit changes" >&2
+            git checkout "$main_branch" >/dev/null 2>&1
+            return 1
+        fi
+
+        # Verify all changes (including untracked files) were committed
+        if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+            echo "⚠️  $iteration_display Commit command ran but changes still present (uncommitted or untracked files remain)" >&2
+            git checkout "$main_branch" >/dev/null 2>&1
+            return 1
+        fi
+
+        echo "📦 $iteration_display Changes committed on branch: $branch_name" >&2
+    fi
 
     local commit_message=$(git log -1 --format="%B" "$branch_name")
     local commit_title=$(echo "$commit_message" | head -n 1)
