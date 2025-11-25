@@ -1110,14 +1110,12 @@ handle_iteration_success() {
 
 execute_single_iteration() {
     local iteration_num=$1
-    
+
     local iteration_display=$(get_iteration_display $iteration_num $MAX_RUNS $extra_iterations)
     echo "🔄 $iteration_display Starting iteration..." >&2
 
-    # Get current branch and create iteration branch
-    local main_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
     local branch_name=""
-    
+
     if [ "$ENABLE_COMMITS" = "true" ]; then
         branch_name=$(create_iteration_branch "$iteration_display" "$iteration_num")
         if [ $? -ne 0 ] || [ -z "$branch_name" ]; then
@@ -1130,6 +1128,9 @@ execute_single_iteration() {
             branch_name=""
         fi
     fi
+
+    # Get the actual main branch AFTER create_iteration_branch (which may have switched branches)
+    local main_branch=$(get_default_branch)
 
     local enhanced_prompt="${PROMPT_WORKFLOW_CONTEXT//COMPLETION_SIGNAL_PLACEHOLDER/$COMPLETION_SIGNAL}
 
