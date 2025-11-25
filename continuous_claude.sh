@@ -1277,8 +1277,8 @@ main() {
             }
         fi
 
-        # Remove --output-format json to show real-time Claude output
-        ADDITIONAL_FLAGS="--dangerously-skip-permissions"
+        # Remove --output-format json and add --verbose to show real-time Claude output
+        ADDITIONAL_FLAGS="--dangerously-skip-permissions --verbose"
 
         # Redirect stderr to both terminal and log file
         exec 2> >(tee -a "$LOG_FILE")
