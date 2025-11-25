@@ -921,10 +921,10 @@ run_claude_iteration() {
     local temp_stderr=$(mktemp)
     local exit_code=0
 
-    # When logging, just run claude directly - output will be captured by exec redirects in main()
+    # When logging, use script to create a pseudo-TTY so Claude shows interactive output
     if [ -n "$LOG_FILE" ]; then
-        # Run directly, let output flow to terminal and log naturally
-        claude -p "$prompt" $flags "${EXTRA_CLAUDE_FLAGS[@]}" || exit_code=$?
+        # Use script to fake a TTY and capture all output
+        script -q -c "claude -p \"$prompt\" $flags ${EXTRA_CLAUDE_FLAGS[*]}" /dev/null || exit_code=$?
         # Create fake success result for parsing
         echo '{"result":"done","total_cost_usd":0}' > "$temp_stdout"
     else
