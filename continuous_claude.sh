@@ -912,21 +912,26 @@ run_claude_iteration() {
     fi
 
     # Run claude and capture both stdout and stderr
-    # Use temporary files for both to ensure synchronous capture
     local temp_stdout=$(mktemp)
     local temp_stderr=$(mktemp)
     local exit_code=0
-    
-    # Capture both stdout and stderr to temp files
-    claude -p "$prompt" $flags "${EXTRA_CLAUDE_FLAGS[@]}" >"$temp_stdout" 2>"$temp_stderr" || exit_code=$?
-    
+
+    # When logging, show real-time output with tee; otherwise capture silently
+    if [ -n "$LOG_FILE" ]; then
+        # Show output in real-time AND capture it
+        claude -p "$prompt" $flags "${EXTRA_CLAUDE_FLAGS[@]}" 2>&1 | tee "$temp_stdout" || exit_code=$?
+    else
+        # Capture to temp files for JSON parsing
+        claude -p "$prompt" $flags "${EXTRA_CLAUDE_FLAGS[@]}" >"$temp_stdout" 2>"$temp_stderr" || exit_code=$?
+    fi
+
     # Output stdout (JSON result) so caller can capture it
     if [ -f "$temp_stdout" ] && [ -s "$temp_stdout" ]; then
         cat "$temp_stdout"
     fi
-    
-    # Display stderr to terminal and save to error log
-    if [ -f "$temp_stderr" ] && [ -s "$temp_stderr" ]; then
+
+    # Display stderr to terminal and save to error log (only for non-logging mode)
+    if [ -z "$LOG_FILE" ] && [ -f "$temp_stderr" ] && [ -s "$temp_stderr" ]; then
         cat "$temp_stderr" >&2
         cat "$temp_stderr" > "$error_log"
     fi
